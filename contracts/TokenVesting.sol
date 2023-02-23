@@ -1,6 +1,6 @@
 // contracts/TokenVesting.sol
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.11;
+pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -155,10 +155,15 @@ contract TokenVesting is Ownable, ReentrancyGuard{
     )
         public
         onlyOwner{
-        require(
-            this.getWithdrawableAmount() >= _amount,
-            "TokenVesting: cannot create vesting schedule because not sufficient tokens"
-        );
+        // We do not validate withdrawable amount here because we want to enable the ability
+        // to call `createVestingSchedule()` from the token contract's constructor.
+        // `getWithdrawableAmount()` would call the token contract's `balanceOf()` which
+        // is not possible during token contract construction.
+        //
+        // require(
+        //     this.getWithdrawableAmount() >= _amount,
+        //     "TokenVesting: cannot create vesting schedule because not sufficient tokens"
+        // );
         require(_duration > 0, "TokenVesting: duration must be > 0");
         require(_amount > 0, "TokenVesting: amount must be > 0");
         require(_slicePeriodSeconds >= 1, "TokenVesting: slicePeriodSeconds must be >= 1");
