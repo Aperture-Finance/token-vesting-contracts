@@ -155,7 +155,7 @@ contract TokenVesting is Ownable, ReentrancyGuard{
     )
         public
         onlyOwner{
-        // We do not validate withdrawable amount here because we to enable the ability
+        // We do not validate withdrawable amount here because we want to enable the ability
         // to call `createVestingSchedule()` from the token contract's constructor.
         // `getWithdrawableAmount()` would call the token contract's `balanceOf()` which
         // is not possible during token contract construction.
