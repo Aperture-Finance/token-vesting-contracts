@@ -55,20 +55,39 @@ contract TokenVesting is Ownable {
     );
     event Revoked(bytes32 indexed vestingScheduleId, uint112 remainingAmount);
 
+    /************************************************
+     *  ACCESS CONTROL
+     ***********************************************/
+
+    function _onlyIfVestingScheduleExists(
+        bytes32 vestingScheduleId
+    ) private view {
+        require(vestingSchedules[vestingScheduleId].initialized);
+    }
+
     /**
      * @dev Reverts if no vesting schedule matches the passed identifier.
      */
     modifier onlyIfVestingScheduleExists(bytes32 vestingScheduleId) {
-        require(vestingSchedules[vestingScheduleId].initialized);
+        _onlyIfVestingScheduleExists(vestingScheduleId);
         _;
+    }
+
+    function _onlyIfVestingScheduleNotRevoked(
+        bytes32 vestingScheduleId
+    ) private view {
+        VestingSchedule storage vestingSchedule = vestingSchedules[
+            vestingScheduleId
+        ];
+        require(vestingSchedule.initialized);
+        require(vestingSchedule.revoked == false);
     }
 
     /**
      * @dev Reverts if the vesting schedule does not exist or has been revoked.
      */
     modifier onlyIfVestingScheduleNotRevoked(bytes32 vestingScheduleId) {
-        require(vestingSchedules[vestingScheduleId].initialized);
-        require(vestingSchedules[vestingScheduleId].revoked == false);
+        _onlyIfVestingScheduleNotRevoked(vestingScheduleId);
         _;
     }
 
