@@ -205,8 +205,12 @@ contract TokenVesting is Ownable {
     function computeVestingScheduleIdForAddressAndIndex(
         address holder,
         uint256 index
-    ) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(holder, index));
+    ) public pure returns (bytes32 id) {
+        assembly ("memory-safe") {
+            mstore(0, holder)
+            mstore(0x20, index)
+            id := keccak256(12, 52)
+        }
     }
 
     /**
@@ -266,7 +270,7 @@ contract TokenVesting is Ownable {
                 VestingSchedule calldata vestingSchedule = _vestingSchedules[i];
                 address beneficiary = vestingSchedule.beneficiary;
                 require(beneficiary != address(0), "!beneficiary");
-                uint112 amountTotal = vestingSchedule.amountTotal;
+                uint112 amount = vestingSchedule.amountTotal;
                 require(amount != 0, "!amount");
                 totalAmount += amount;
                 uint32 start = vestingSchedule.start;
@@ -280,11 +284,7 @@ contract TokenVesting is Ownable {
                 vestingSchedules[vestingScheduleId] = vestingSchedule;
                 vestingSchedulesIds.push(vestingScheduleId);
                 ++holdersVestingCount[beneficiary];
-                emit Created(
-                    vestingScheduleId,
-                    beneficiary,
-                    amount
-                );
+                emit Created(vestingScheduleId, beneficiary, amount);
             }
             require(totalAmount > _vestingSchedulesTotalAmount);
             vestingSchedulesTotalAmount = totalAmount;
