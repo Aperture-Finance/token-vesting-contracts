@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "solmate/src/utils/SafeTransferLib.sol";
 
@@ -10,7 +9,7 @@ import "solmate/src/utils/SafeTransferLib.sol";
  * @title TokenVesting
  * @author Aperture Finance
  */
-contract TokenVesting is Ownable, ReentrancyGuard {
+contract TokenVesting is Ownable {
     using SafeTransferLib for ERC20;
 
     struct VestingSchedule {
@@ -311,7 +310,7 @@ contract TokenVesting is Ownable, ReentrancyGuard {
      * @notice Withdraw the specified amount if possible.
      * @param amount the amount to withdraw
      */
-    function withdraw(uint256 amount) external nonReentrant onlyOwner {
+    function withdraw(uint256 amount) external onlyOwner {
         require(
             getWithdrawableAmount() >= amount,
             "not enough withdrawable funds"
@@ -327,7 +326,7 @@ contract TokenVesting is Ownable, ReentrancyGuard {
     function release(
         bytes32 vestingScheduleId,
         uint112 amount
-    ) public nonReentrant onlyIfVestingScheduleNotRevoked(vestingScheduleId) {
+    ) public onlyIfVestingScheduleNotRevoked(vestingScheduleId) {
         VestingSchedule storage vestingSchedule = vestingSchedules[
             vestingScheduleId
         ];
