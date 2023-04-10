@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "solmate/src/utils/SafeTransferLib.sol";
 
 /**
  * @title TokenVesting
  * @author Aperture Finance
  */
 contract TokenVesting is Ownable, ReentrancyGuard {
-    using SafeERC20 for IERC20;
+    using SafeTransferLib for ERC20;
 
     struct VestingSchedule {
         // first slot
@@ -38,7 +37,7 @@ contract TokenVesting is Ownable, ReentrancyGuard {
     }
 
     // address of the ERC20 token
-    IERC20 private immutable _token;
+    ERC20 private immutable _token;
 
     bytes32[] private vestingSchedulesIds;
     mapping(bytes32 => VestingSchedule) private vestingSchedules;
@@ -71,7 +70,7 @@ contract TokenVesting is Ownable, ReentrancyGuard {
      */
     constructor(address token_) {
         require(token_ != address(0x0));
-        _token = IERC20(token_);
+        _token = ERC20(token_);
     }
 
     /************************************************
