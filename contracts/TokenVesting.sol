@@ -154,13 +154,17 @@ contract TokenVesting is Ownable {
     function getLastVestingScheduleForHolder(
         address holder
     ) external view returns (VestingSchedule memory) {
-        return
-            vestingSchedules[
-                computeVestingScheduleIdForAddressAndIndex(
-                    holder,
-                    holdersVestingCount[holder] - 1
-                )
-            ];
+        uint256 count = holdersVestingCount[holder];
+        require(count != 0, "!vesting");
+        unchecked {
+            return
+                vestingSchedules[
+                    computeVestingScheduleIdForAddressAndIndex(
+                        holder,
+                        count - 1
+                    )
+                ];
+        }
     }
 
     /**
@@ -217,20 +221,25 @@ contract TokenVesting is Ownable {
         VestingSchedule storage vestingSchedule
     ) internal view returns (uint112) {
         uint256 currentTime = getCurrentTime();
-        if (
-            (currentTime < vestingSchedule.cliff) ||
-            vestingSchedule.revoked == true
-        ) {
-            return 0;
-        } else if (
-            currentTime >= vestingSchedule.start + vestingSchedule.duration
-        ) {
-            return vestingSchedule.amountTotal - vestingSchedule.released;
-        } else {
-            uint256 timeFromStart = currentTime - vestingSchedule.start;
-            uint256 vestedAmount = (vestingSchedule.amountTotal *
-                timeFromStart) / vestingSchedule.duration;
-            return uint112(vestedAmount) - vestingSchedule.released;
+        unchecked {
+            if (
+                (currentTime < vestingSchedule.cliff) ||
+                vestingSchedule.revoked == true
+            ) {
+                return 0;
+            } else if (
+                currentTime >= vestingSchedule.start + vestingSchedule.duration
+            ) {
+                return vestingSchedule.amountTotal - vestingSchedule.released;
+            } else {
+                // start + duration > currentTime >= cliff >= start
+                uint256 timeFromStart = currentTime - vestingSchedule.start;
+                // duration > timeFromStart >= 0
+                // uint112 * uint32 < uint256, cannot overflow
+                uint256 vestedAmount = (vestingSchedule.amountTotal *
+                    timeFromStart) / vestingSchedule.duration;
+                return uint112(vestedAmount) - vestingSchedule.released;
+            }
         }
     }
 
@@ -265,7 +274,13 @@ contract TokenVesting is Ownable {
         bytes32 vestingScheduleId = computeNextVestingScheduleIdForHolder(
             _beneficiary
         );
-        uint32 cliff = _start + _cliff;
+        uint32 cliff;
+        unchecked {
+            cliff = _start + _cliff;
+            require(cliff >= _start);
+            uint32 end = _start + _duration;
+            require(end > _start);
+        }
         vestingSchedules[vestingScheduleId] = VestingSchedule({
             initialized: true,
             revocable: _revocable,
@@ -279,7 +294,10 @@ contract TokenVesting is Ownable {
         });
         unchecked {
             // Cannot realistically overflow
-            vestingSchedulesTotalAmount = vestingSchedulesTotalAmount + _amount;
+            uint256 _vestingSchedulesTotalAmount = vestingSchedulesTotalAmount;
+            uint256 totalAmount = _vestingSchedulesTotalAmount + _amount;
+            require(totalAmount > _vestingSchedulesTotalAmount);
+            vestingSchedulesTotalAmount = totalAmount;
             vestingSchedulesIds.push(vestingScheduleId);
             holdersVestingCount[_beneficiary] += 1;
         }
@@ -295,14 +313,16 @@ contract TokenVesting is Ownable {
         VestingSchedule storage vestingSchedule = vestingSchedules[
             vestingScheduleId
         ];
-        require(vestingSchedule.revocable == true, "vesting is not revocable");
+        require(vestingSchedule.revocable == true, "!revocable");
         uint112 vestedAmount = _computeReleasableAmount(vestingSchedule);
         if (vestedAmount != 0) {
             release(vestingScheduleId, vestedAmount);
         }
-        uint256 unreleased = vestingSchedule.amountTotal -
-            vestingSchedule.released;
-        vestingSchedulesTotalAmount = vestingSchedulesTotalAmount - unreleased;
+        unchecked {
+            vestingSchedulesTotalAmount -=
+                vestingSchedule.amountTotal -
+                vestingSchedule.released;
+        }
         vestingSchedule.revoked = true;
     }
 
@@ -311,10 +331,7 @@ contract TokenVesting is Ownable {
      * @param amount the amount to withdraw
      */
     function withdraw(uint256 amount) external onlyOwner {
-        require(
-            getWithdrawableAmount() >= amount,
-            "not enough withdrawable funds"
-        );
+        require(getWithdrawableAmount() >= amount, "!withdrawable");
         _token.safeTransfer(owner(), amount);
     }
 
@@ -334,17 +351,15 @@ contract TokenVesting is Ownable {
         address beneficiary = vestingSchedule.beneficiary;
         bool isBeneficiary = sender == beneficiary;
         bool isOwner = sender == owner();
-        require(
-            isBeneficiary || isOwner,
-            "only beneficiary and owner can release vested tokens"
-        );
+        require(isBeneficiary || isOwner, "only beneficiary or owner");
         uint112 releasableAmount = _computeReleasableAmount(vestingSchedule);
-        require(
-            releasableAmount >= amount,
-            "cannot release tokens, not enough vested tokens"
-        );
-        vestingSchedule.released = vestingSchedule.released + amount;
-        vestingSchedulesTotalAmount = vestingSchedulesTotalAmount - amount;
+        require(releasableAmount >= amount, "!releasable");
+        unchecked {
+            // released + amount <= released + releasableAmount <= amountTotal
+            vestingSchedule.released += amount;
+            // vestingSchedulesTotalAmount >= amountTotal >= releasableAmount >= amount
+            vestingSchedulesTotalAmount -= amount;
+        }
         _token.safeTransfer(beneficiary, amount);
     }
 }

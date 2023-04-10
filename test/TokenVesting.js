@@ -92,14 +92,12 @@ describe("TokenVesting", function () {
       // check that only beneficiary can try to release vested tokens
       await expect(
         tokenVesting.connect(addr2).release(vestingScheduleId, 100)
-      ).to.be.revertedWith(
-        "only beneficiary and owner can release vested tokens"
-      );
+      ).to.be.revertedWith("only beneficiary or owner");
 
       // check that beneficiary cannot release more than the vested amount
       await expect(
         tokenVesting.connect(beneficiary).release(vestingScheduleId, 100)
-      ).to.be.revertedWith("cannot release tokens, not enough vested tokens");
+      ).to.be.revertedWith("!releasable");
 
       // release 10 tokens and check that a Transfer event is emitted with a value of 10
       await expect(
