@@ -43,14 +43,23 @@ contract TokenVesting is Ownable {
     uint256 private vestingSchedulesTotalAmount;
     mapping(address => uint256) private holdersVestingCount;
 
-    event Released(uint256 amount);
-    event Revoked();
+    event Created(
+        bytes32 indexed vestingScheduleId,
+        address indexed beneficiary,
+        uint112 amountTotal
+    );
+    event Released(
+        bytes32 indexed vestingScheduleId,
+        address indexed beneficiary,
+        uint112 amount
+    );
+    event Revoked(bytes32 indexed vestingScheduleId, uint112 remainingAmount);
 
     /**
      * @dev Reverts if no vesting schedule matches the passed identifier.
      */
     modifier onlyIfVestingScheduleExists(bytes32 vestingScheduleId) {
-        require(vestingSchedules[vestingScheduleId].initialized == true);
+        require(vestingSchedules[vestingScheduleId].initialized);
         _;
     }
 
@@ -58,7 +67,7 @@ contract TokenVesting is Ownable {
      * @dev Reverts if the vesting schedule does not exist or has been revoked.
      */
     modifier onlyIfVestingScheduleNotRevoked(bytes32 vestingScheduleId) {
-        require(vestingSchedules[vestingScheduleId].initialized == true);
+        require(vestingSchedules[vestingScheduleId].initialized);
         require(vestingSchedules[vestingScheduleId].revoked == false);
         _;
     }
@@ -223,8 +232,7 @@ contract TokenVesting is Ownable {
         uint256 currentTime = getCurrentTime();
         unchecked {
             if (
-                (currentTime < vestingSchedule.cliff) ||
-                vestingSchedule.revoked == true
+                (currentTime < vestingSchedule.cliff) || vestingSchedule.revoked
             ) {
                 return 0;
             } else if (
@@ -240,6 +248,46 @@ contract TokenVesting is Ownable {
                     timeFromStart) / vestingSchedule.duration;
                 return uint112(vestedAmount) - vestingSchedule.released;
             }
+        }
+    }
+
+    /**
+     * @notice Batch create vesting schedules.
+     * @param _vestingSchedules vesting schedules to create
+     */
+    function batchCreateVestingSchedule(
+        VestingSchedule[] calldata _vestingSchedules
+    ) external onlyOwner {
+        unchecked {
+            uint256 _vestingSchedulesTotalAmount = vestingSchedulesTotalAmount;
+            uint256 totalAmount = _vestingSchedulesTotalAmount;
+            uint256 length = _vestingSchedules.length;
+            for (uint256 i = 0; i < length; i++) {
+                VestingSchedule calldata vestingSchedule = _vestingSchedules[i];
+                address beneficiary = vestingSchedule.beneficiary;
+                require(beneficiary != address(0), "!beneficiary");
+                uint112 amountTotal = vestingSchedule.amountTotal;
+                require(amount != 0, "!amount");
+                totalAmount += amount;
+                uint32 start = vestingSchedule.start;
+                require(vestingSchedule.cliff >= start, "cliff < start");
+                uint32 duration = vestingSchedule.duration;
+                require(duration != 0, "!duration");
+                require(start + duration > start, "start + duration overflow");
+                bytes32 vestingScheduleId = computeNextVestingScheduleIdForHolder(
+                        beneficiary
+                    );
+                vestingSchedules[vestingScheduleId] = vestingSchedule;
+                vestingSchedulesIds.push(vestingScheduleId);
+                ++holdersVestingCount[beneficiary];
+                emit Created(
+                    vestingScheduleId,
+                    beneficiary,
+                    amount
+                );
+            }
+            require(totalAmount > _vestingSchedulesTotalAmount);
+            vestingSchedulesTotalAmount = totalAmount;
         }
     }
 
@@ -274,25 +322,21 @@ contract TokenVesting is Ownable {
         bytes32 vestingScheduleId = computeNextVestingScheduleIdForHolder(
             _beneficiary
         );
-        uint32 cliff;
         unchecked {
-            cliff = _start + _cliff;
+            uint32 cliff = _start + _cliff;
             require(cliff >= _start);
-            uint32 end = _start + _duration;
-            require(end > _start);
-        }
-        vestingSchedules[vestingScheduleId] = VestingSchedule({
-            initialized: true,
-            revocable: _revocable,
-            revoked: false,
-            beneficiary: _beneficiary,
-            cliff: cliff,
-            start: _start,
-            duration: _duration,
-            amountTotal: _amount,
-            released: 0
-        });
-        unchecked {
+            require(_start + _duration > _start);
+            vestingSchedules[vestingScheduleId] = VestingSchedule({
+                initialized: true,
+                revocable: _revocable,
+                revoked: false,
+                beneficiary: _beneficiary,
+                cliff: cliff,
+                start: _start,
+                duration: _duration,
+                amountTotal: _amount,
+                released: 0
+            });
             // Cannot realistically overflow
             uint256 _vestingSchedulesTotalAmount = vestingSchedulesTotalAmount;
             uint256 totalAmount = _vestingSchedulesTotalAmount + _amount;
@@ -301,6 +345,7 @@ contract TokenVesting is Ownable {
             vestingSchedulesIds.push(vestingScheduleId);
             holdersVestingCount[_beneficiary] += 1;
         }
+        emit Created(vestingScheduleId, _beneficiary, _amount);
     }
 
     /**
@@ -313,17 +358,18 @@ contract TokenVesting is Ownable {
         VestingSchedule storage vestingSchedule = vestingSchedules[
             vestingScheduleId
         ];
-        require(vestingSchedule.revocable == true, "!revocable");
+        require(vestingSchedule.revocable, "!revocable");
         uint112 vestedAmount = _computeReleasableAmount(vestingSchedule);
         if (vestedAmount != 0) {
             release(vestingScheduleId, vestedAmount);
         }
         unchecked {
-            vestingSchedulesTotalAmount -=
-                vestingSchedule.amountTotal -
+            uint112 remainingAmount = vestingSchedule.amountTotal -
                 vestingSchedule.released;
+            vestingSchedulesTotalAmount -= remainingAmount;
+            vestingSchedule.revoked = true;
+            emit Revoked(vestingScheduleId, remainingAmount);
         }
-        vestingSchedule.revoked = true;
     }
 
     /**
@@ -353,7 +399,7 @@ contract TokenVesting is Ownable {
         bool isOwner = sender == owner();
         require(isBeneficiary || isOwner, "only beneficiary or owner");
         uint112 releasableAmount = _computeReleasableAmount(vestingSchedule);
-        require(releasableAmount >= amount, "!releasable");
+        amount = releasableAmount < amount ? releasableAmount : amount;
         unchecked {
             // released + amount <= released + releasableAmount <= amountTotal
             vestingSchedule.released += amount;
@@ -361,5 +407,6 @@ contract TokenVesting is Ownable {
             vestingSchedulesTotalAmount -= amount;
         }
         _token.safeTransfer(beneficiary, amount);
+        emit Released(vestingScheduleId, beneficiary, amount);
     }
 }
