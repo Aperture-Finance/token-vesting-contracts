@@ -47,7 +47,6 @@ describe("TokenVesting", function () {
       const startTime = baseTime;
       const cliff = 0;
       const duration = 1000;
-      const slicePeriodSeconds = 1;
       const revokable = true;
       const amount = 100;
 
@@ -57,7 +56,6 @@ describe("TokenVesting", function () {
         startTime,
         cliff,
         duration,
-        slicePeriodSeconds,
         revokable,
         amount
       );
@@ -95,15 +93,13 @@ describe("TokenVesting", function () {
       await expect(
         tokenVesting.connect(addr2).release(vestingScheduleId, 100)
       ).to.be.revertedWith(
-        "TokenVesting: only beneficiary and owner can release vested tokens"
+        "only beneficiary and owner can release vested tokens"
       );
 
       // check that beneficiary cannot release more than the vested amount
       await expect(
         tokenVesting.connect(beneficiary).release(vestingScheduleId, 100)
-      ).to.be.revertedWith(
-        "TokenVesting: cannot release tokens, not enough vested tokens"
-      );
+      ).to.be.revertedWith("cannot release tokens, not enough vested tokens");
 
       // release 10 tokens and check that a Transfer event is emitted with a value of 10
       await expect(
@@ -163,7 +159,7 @@ describe("TokenVesting", function () {
       // check that anyone cannot revoke a vesting
       await expect(
         tokenVesting.connect(addr2).revoke(vestingScheduleId)
-      ).to.be.revertedWith(" Ownable: caller is not the owner");
+      ).to.be.revertedWith("Ownable: caller is not the owner");
       await tokenVesting.revoke(vestingScheduleId);
 
       /*
@@ -205,8 +201,7 @@ describe("TokenVesting", function () {
       const startTime = baseTime;
       const cliff = 0;
       const duration = 1000;
-      const slicePeriodSeconds = 1;
-      const revokable = true;
+      const revocable = true;
       const amount = 100;
 
       // create new vesting schedule
@@ -215,8 +210,7 @@ describe("TokenVesting", function () {
         startTime,
         cliff,
         duration,
-        slicePeriodSeconds,
-        revokable,
+        revocable,
         amount
       );
 
@@ -262,40 +256,13 @@ describe("TokenVesting", function () {
       const tokenVesting = await TokenVesting.deploy(testToken.address);
       await tokenVesting.deployed();
       await testToken.transfer(tokenVesting.address, 1000);
-      const time = Date.now();
+      const time = Math.round(Date.now() / 1000);
       await expect(
-        tokenVesting.createVestingSchedule(
-          addr1.address,
-          time,
-          0,
-          0,
-          1,
-          false,
-          1
-        )
-      ).to.be.revertedWith("TokenVesting: duration must be > 0");
+        tokenVesting.createVestingSchedule(addr1.address, time, 0, 0, false, 1)
+      ).to.be.revertedWith("!duration");
       await expect(
-        tokenVesting.createVestingSchedule(
-          addr1.address,
-          time,
-          0,
-          1,
-          0,
-          false,
-          1
-        )
-      ).to.be.revertedWith("TokenVesting: slicePeriodSeconds must be >= 1");
-      await expect(
-        tokenVesting.createVestingSchedule(
-          addr1.address,
-          time,
-          0,
-          1,
-          1,
-          false,
-          0
-        )
-      ).to.be.revertedWith("TokenVesting: amount must be > 0");
+        tokenVesting.createVestingSchedule(addr1.address, time, 0, 1, false, 0)
+      ).to.be.revertedWith("!amount");
     });
   });
 });
