@@ -54,6 +54,7 @@ contract TokenVesting is Ownable {
         uint112 amount
     );
     event Revoked(bytes32 indexed vestingScheduleId, uint112 remainingAmount);
+    event Withdrawn(address indexed owner, uint256 amount);
 
     /************************************************
      *  ACCESS CONTROL
@@ -398,6 +399,7 @@ contract TokenVesting is Ownable {
     function withdraw(uint256 amount) external onlyOwner {
         require(getWithdrawableAmount() >= amount, "!withdrawable");
         _token.safeTransfer(owner(), amount);
+        emit Withdrawn(owner(), amount);
     }
 
     /**
