@@ -4,6 +4,7 @@ describe("TokenVesting", function () {
   let Token;
   let testToken;
   let TokenVesting;
+  let tokenVesting;
   let owner;
   let addr1;
   let addr2;
@@ -17,6 +18,10 @@ describe("TokenVesting", function () {
     [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
     testToken = await Token.deploy("Test Token", "TT", 1000000);
     await testToken.deployed();
+    // deploy vesting contract
+    tokenVesting = await TokenVesting.deploy(testToken.address);
+    await tokenVesting.deployed();
+    expect(await tokenVesting.getToken()).to.equal(testToken.address);
   });
 
   describe("Vesting", function () {
@@ -26,12 +31,6 @@ describe("TokenVesting", function () {
     });
 
     it("Should vest tokens gradually", async function () {
-      // deploy vesting contract
-      const tokenVesting = await TokenVesting.deploy(testToken.address);
-      await tokenVesting.deployed();
-      expect((await tokenVesting.getToken()).toString()).to.equal(
-        testToken.address
-      );
       // send tokens to vesting contract
       await expect(testToken.transfer(tokenVesting.address, 1000))
         .to.emit(testToken, "Transfer")
@@ -92,7 +91,7 @@ describe("TokenVesting", function () {
       // check that only beneficiary can try to release vested tokens
       await expect(
         tokenVesting.connect(addr2).release(vestingScheduleId, 100)
-      ).to.be.revertedWith("only beneficiary or owner");
+      ).to.be.revertedWith("OnlyBeneficiaryOrOwner");
 
       // release 10 tokens and check that a Transfer event is emitted with a value of 10
       await expect(
@@ -178,12 +177,6 @@ describe("TokenVesting", function () {
     });
 
     it("Should release vested tokens if revoked", async function () {
-      // deploy vesting contract
-      const tokenVesting = await TokenVesting.deploy(testToken.address);
-      await tokenVesting.deployed();
-      expect((await tokenVesting.getToken()).toString()).to.equal(
-        testToken.address
-      );
       // send tokens to vesting contract
       await expect(testToken.transfer(tokenVesting.address, 1000))
         .to.emit(testToken, "Transfer")
@@ -224,8 +217,6 @@ describe("TokenVesting", function () {
     });
 
     it("Should compute vesting schedule index", async function () {
-      const tokenVesting = await TokenVesting.deploy(testToken.address);
-      await tokenVesting.deployed();
       const expectedVestingScheduleId =
         "0xa279197a1d7a4b7398aa0248e95b8fcc6cdfb43220ade05d01add9c5468ea097";
       expect(
@@ -246,16 +237,14 @@ describe("TokenVesting", function () {
     });
 
     it("Should check input parameters for createVestingSchedule method", async function () {
-      const tokenVesting = await TokenVesting.deploy(testToken.address);
-      await tokenVesting.deployed();
       await testToken.transfer(tokenVesting.address, 1000);
       const time = Math.round(Date.now() / 1000);
       await expect(
         tokenVesting.createVestingSchedule(addr1.address, time, 0, 0, false, 1)
-      ).to.be.revertedWith("!duration");
+      ).to.be.revertedWith("InvalidDuration");
       await expect(
         tokenVesting.createVestingSchedule(addr1.address, time, 0, 1, false, 0)
-      ).to.be.revertedWith("!amount");
+      ).to.be.revertedWith("InvalidAmount");
     });
   });
 });

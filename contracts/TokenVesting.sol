@@ -36,7 +36,7 @@ contract TokenVesting is Ownable {
     }
 
     // address of the ERC20 token
-    ERC20 private immutable _token;
+    ERC20 private immutable token;
 
     bytes32[] private vestingSchedulesIds;
     mapping(bytes32 => VestingSchedule) private vestingSchedules;
@@ -55,6 +55,25 @@ contract TokenVesting is Ownable {
     );
     event Revoked(bytes32 indexed vestingScheduleId, uint112 remainingAmount);
     event Withdrawn(address indexed owner, uint256 amount);
+
+    error IndexOutOfBounds();
+    error NotVesting();
+    error NotRevocable();
+    error NotWithdrawable();
+    error InvalidAmount();
+    error InvalidBeneficiary();
+    error InvalidDuration();
+    error CliffBeforeStart();
+    error OnlyBeneficiaryOrOwner();
+
+    /**
+     * @dev Creates a vesting contract.
+     * @param _token address of the ERC20 token contract
+     */
+    constructor(address _token) {
+        require(_token != address(0));
+        token = ERC20(_token);
+    }
 
     /************************************************
      *  ACCESS CONTROL
@@ -81,7 +100,7 @@ contract TokenVesting is Ownable {
             vestingScheduleId
         ];
         require(vestingSchedule.initialized);
-        require(vestingSchedule.revoked == false);
+        require(!vestingSchedule.revoked);
     }
 
     /**
@@ -90,15 +109,6 @@ contract TokenVesting is Ownable {
     modifier onlyIfVestingScheduleNotRevoked(bytes32 vestingScheduleId) {
         _onlyIfVestingScheduleNotRevoked(vestingScheduleId);
         _;
-    }
-
-    /**
-     * @dev Creates a vesting contract.
-     * @param token_ address of the ERC20 token contract
-     */
-    constructor(address token_) {
-        require(token_ != address(0x0));
-        _token = ERC20(token_);
     }
 
     /************************************************
@@ -113,7 +123,7 @@ contract TokenVesting is Ownable {
      * @dev Returns the address of the ERC20 token managed by the vesting contract.
      */
     function getToken() external view returns (address) {
-        return address(_token);
+        return address(token);
     }
 
     /**
@@ -123,7 +133,7 @@ contract TokenVesting is Ownable {
     function getVestingIdAtIndex(
         uint256 index
     ) external view returns (bytes32) {
-        require(index < vestingSchedulesIds.length, "index out of bounds");
+        if (index >= vestingSchedulesIds.length) revert IndexOutOfBounds();
         return vestingSchedulesIds[index];
     }
 
@@ -184,7 +194,7 @@ contract TokenVesting is Ownable {
         address holder
     ) external view returns (VestingSchedule memory) {
         uint256 count = holdersVestingCount[holder];
-        require(count != 0, "!vesting");
+        if (count == 0) revert NotVesting();
         unchecked {
             return
                 vestingSchedules[
@@ -201,7 +211,7 @@ contract TokenVesting is Ownable {
      * @return the amount of tokens
      */
     function getWithdrawableAmount() public view returns (uint256) {
-        return _token.balanceOf(address(this)) - vestingSchedulesTotalAmount;
+        return token.balanceOf(address(this)) - vestingSchedulesTotalAmount;
     }
 
     /**
@@ -289,15 +299,15 @@ contract TokenVesting is Ownable {
             for (uint256 i = 0; i < length; i++) {
                 VestingSchedule calldata vestingSchedule = _vestingSchedules[i];
                 address beneficiary = vestingSchedule.beneficiary;
-                require(beneficiary != address(0), "!beneficiary");
+                if (beneficiary == address(0)) revert InvalidBeneficiary();
                 uint112 amount = vestingSchedule.amountTotal;
-                require(amount != 0, "!amount");
+                if (amount == 0) revert InvalidAmount();
                 totalAmount += amount;
                 uint32 start = vestingSchedule.start;
-                require(vestingSchedule.cliff >= start, "cliff < start");
+                if (vestingSchedule.cliff < start) revert CliffBeforeStart();
                 uint32 duration = vestingSchedule.duration;
-                require(duration != 0, "!duration");
-                require(start + duration > start, "start + duration overflow");
+                if (duration == 0) revert InvalidDuration();
+                require(start + duration > start);
                 bytes32 vestingScheduleId = computeNextVestingScheduleIdForHolder(
                         beneficiary
                     );
@@ -337,8 +347,8 @@ contract TokenVesting is Ownable {
         //     getWithdrawableAmount() >= _amount,
         //     "cannot create vesting schedule because not sufficient tokens"
         // );
-        require(_duration != 0, "!duration");
-        require(_amount != 0, "!amount");
+        if (_duration == 0) revert InvalidDuration();
+        if (_amount == 0) revert InvalidAmount();
         bytes32 vestingScheduleId = computeNextVestingScheduleIdForHolder(
             _beneficiary
         );
@@ -378,7 +388,7 @@ contract TokenVesting is Ownable {
         VestingSchedule storage vestingSchedule = vestingSchedules[
             vestingScheduleId
         ];
-        require(vestingSchedule.revocable, "!revocable");
+        if (!vestingSchedule.revocable) revert NotRevocable();
         uint112 vestedAmount = _computeReleasableAmount(vestingSchedule);
         if (vestedAmount != 0) {
             release(vestingScheduleId, vestedAmount);
@@ -397,8 +407,8 @@ contract TokenVesting is Ownable {
      * @param amount the amount to withdraw
      */
     function withdraw(uint256 amount) external onlyOwner {
-        require(getWithdrawableAmount() >= amount, "!withdrawable");
-        _token.safeTransfer(owner(), amount);
+        if (getWithdrawableAmount() < amount) revert NotWithdrawable();
+        token.safeTransfer(owner(), amount);
         emit Withdrawn(owner(), amount);
     }
 
@@ -418,7 +428,7 @@ contract TokenVesting is Ownable {
         address beneficiary = vestingSchedule.beneficiary;
         bool isBeneficiary = sender == beneficiary;
         bool isOwner = sender == owner();
-        require(isBeneficiary || isOwner, "only beneficiary or owner");
+        if (!isBeneficiary && !isOwner) revert OnlyBeneficiaryOrOwner();
         uint112 releasableAmount = _computeReleasableAmount(vestingSchedule);
         amount = releasableAmount < amount ? releasableAmount : amount;
         unchecked {
@@ -427,7 +437,7 @@ contract TokenVesting is Ownable {
             // vestingSchedulesTotalAmount >= amountTotal >= releasableAmount >= amount
             vestingSchedulesTotalAmount -= amount;
         }
-        _token.safeTransfer(beneficiary, amount);
+        token.safeTransfer(beneficiary, amount);
         emit Released(vestingScheduleId, beneficiary, amount);
     }
 }
