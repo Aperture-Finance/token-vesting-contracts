@@ -1,14 +1,16 @@
-import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@nomiclabs/hardhat-solhint";
 import "hardhat-abi-exporter";
 import "hardhat-docgen";
 import "hardhat-tracer";
+import { HardhatUserConfig } from "hardhat/config";
+import { NetworksUserConfig, SolidityUserConfig } from "hardhat/types/config";
+import { AbiExporterUserConfig } from "hardhat-abi-exporter";
 
 /**
  * @type import('hardhat/config').HardhatUserConfig
  */
-const config = {
+const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.18",
     settings: {
@@ -17,13 +19,13 @@ const config = {
         runs: 200,
       },
     },
-  },
+  } as SolidityUserConfig,
   networks: {
     mainnet: mainnetNetworkConfig(),
     goerli: goerliNetworkConfig(),
     bscMainnet: bscMainnetNetworkConfig(),
     bscTestnet: bscTestnetNetworkConfig(),
-  },
+  } as NetworksUserConfig,
   abiExporter: {
     path: "./abi",
     clear: true,
@@ -31,7 +33,7 @@ const config = {
     spacing: 2,
     pretty: true,
     runOnCompile: true,
-  },
+  } as AbiExporterUserConfig,
   docgen: {
     path: "./docs",
     clear: true,
