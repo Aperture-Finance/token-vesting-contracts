@@ -1,18 +1,16 @@
-require("@nomiclabs/hardhat-waffle");
-require("@nomiclabs/hardhat-solhint");
-require("@nomiclabs/hardhat-etherscan");
-require("hardhat-abi-exporter");
-require("hardhat-docgen");
-require("hardhat-tracer");
-require("hardhat-gas-reporter");
-require("solidity-coverage");
-
-const etherscanApiKey = getEtherscanApiKey();
+import "@nomicfoundation/hardhat-toolbox";
+import "@nomiclabs/hardhat-solhint";
+import "hardhat-abi-exporter";
+import "hardhat-docgen";
+import "hardhat-tracer";
+import { HardhatUserConfig } from "hardhat/config";
+import { NetworksUserConfig, SolidityUserConfig } from "hardhat/types/config";
+import { AbiExporterUserConfig } from "hardhat-abi-exporter";
 
 /**
  * @type import('hardhat/config').HardhatUserConfig
  */
-module.exports = {
+const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.18",
     settings: {
@@ -21,19 +19,21 @@ module.exports = {
         runs: 200,
       },
     },
-  },
+  } as SolidityUserConfig,
   networks: {
     mainnet: mainnetNetworkConfig(),
     goerli: goerliNetworkConfig(),
     bscMainnet: bscMainnetNetworkConfig(),
     bscTestnet: bscTestnetNetworkConfig(),
-  },
+  } as NetworksUserConfig,
   abiExporter: {
-    path: "./build/abi",
+    path: "./abi",
     clear: true,
-    flat: true,
+    flat: false,
     spacing: 2,
-  },
+    pretty: true,
+    runOnCompile: true,
+  } as AbiExporterUserConfig,
   docgen: {
     path: "./docs",
     clear: true,
@@ -43,9 +43,11 @@ module.exports = {
     currency: "USD",
   },
   etherscan: {
-    apiKey: `${etherscanApiKey}`,
+    apiKey: getEtherscanApiKey(),
   },
 };
+
+export default config;
 
 function mainnetNetworkConfig() {
   let url = "https://mainnet.infura.io/v3/";

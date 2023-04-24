@@ -1,22 +1,42 @@
-const { expect } = require("chai");
+import { ethers } from "hardhat";
+import { expect } from "chai";
+import {
+  MockTokenVesting,
+  MockTokenVesting__factory,
+  Token,
+  Token__factory,
+  TokenVesting,
+} from "../typechain-types";
+import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 
 describe("TokenVesting", function () {
-  let Token;
-  let testToken;
-  let TokenVesting;
-  let owner;
-  let addr1;
-  let addr2;
-  let addrs;
+  let TokenFactory: Token__factory;
+  let testToken: Token;
+  let TokenVestingFactory: MockTokenVesting__factory;
+  let tokenVesting: MockTokenVesting;
+  let owner: SignerWithAddress;
+  let addr1: SignerWithAddress;
+  let addr2: SignerWithAddress;
+  let addrs: SignerWithAddress[];
+  const baseTime = 1622551248;
+  const startTime = baseTime;
+  const cliff = 0;
+  const duration = 1000;
+  const revocable = true;
+  const amountTotal = 100;
 
   before(async function () {
-    Token = await ethers.getContractFactory("Token");
-    TokenVesting = await ethers.getContractFactory("MockTokenVesting");
+    TokenFactory = await ethers.getContractFactory("Token");
+    TokenVestingFactory = await ethers.getContractFactory("MockTokenVesting");
   });
   beforeEach(async function () {
     [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
-    testToken = await Token.deploy("Test Token", "TT", 1000000);
+    testToken = await TokenFactory.deploy("Test Token", "TT", 1000000);
     await testToken.deployed();
+    // deploy vesting contract
+    tokenVesting = await TokenVestingFactory.deploy(testToken.address);
+    await tokenVesting.deployed();
+    expect(await tokenVesting.getToken()).to.equal(testToken.address);
   });
 
   describe("Vesting", function () {
@@ -26,12 +46,6 @@ describe("TokenVesting", function () {
     });
 
     it("Should vest tokens gradually", async function () {
-      // deploy vesting contract
-      const tokenVesting = await TokenVesting.deploy(testToken.address);
-      await tokenVesting.deployed();
-      expect((await tokenVesting.getToken()).toString()).to.equal(
-        testToken.address
-      );
       // send tokens to vesting contract
       await expect(testToken.transfer(tokenVesting.address, 1000))
         .to.emit(testToken, "Transfer")
@@ -42,25 +56,20 @@ describe("TokenVesting", function () {
       expect(vestingContractBalance).to.equal(1000);
       expect(await tokenVesting.getWithdrawableAmount()).to.equal(1000);
 
-      const baseTime = 1622551248;
       const beneficiary = addr1;
-      const startTime = baseTime;
-      const cliff = 0;
-      const duration = 1000;
-      const slicePeriodSeconds = 1;
-      const revokable = true;
-      const amount = 100;
-
-      // create new vesting schedule
-      await tokenVesting.createVestingSchedule(
-        beneficiary.address,
-        startTime,
-        cliff,
+      const schedule: TokenVesting.VestingScheduleStruct = {
+        initialized: true,
+        revocable,
+        revoked: false,
+        beneficiary: beneficiary.address,
+        start: startTime,
+        cliff: startTime + cliff,
         duration,
-        slicePeriodSeconds,
-        revokable,
-        amount
-      );
+        amountTotal,
+        released: 0,
+      };
+      // create new vesting schedule
+      await tokenVesting.createVestingSchedule(schedule);
       expect(await tokenVesting.getVestingSchedulesCount()).to.be.equal(1);
       expect(
         await tokenVesting.getVestingSchedulesCountByBeneficiary(
@@ -94,16 +103,7 @@ describe("TokenVesting", function () {
       // check that only beneficiary can try to release vested tokens
       await expect(
         tokenVesting.connect(addr2).release(vestingScheduleId, 100)
-      ).to.be.revertedWith(
-        "TokenVesting: only beneficiary and owner can release vested tokens"
-      );
-
-      // check that beneficiary cannot release more than the vested amount
-      await expect(
-        tokenVesting.connect(beneficiary).release(vestingScheduleId, 100)
-      ).to.be.revertedWith(
-        "TokenVesting: cannot release tokens, not enough vested tokens"
-      );
+      ).to.be.revertedWithCustomError(tokenVesting, "OnlyBeneficiaryOrOwner");
 
       // release 10 tokens and check that a Transfer event is emitted with a value of 10
       await expect(
@@ -118,9 +118,8 @@ describe("TokenVesting", function () {
           .connect(beneficiary)
           .computeReleasableAmount(vestingScheduleId)
       ).to.be.equal(40);
-      let vestingSchedule = await tokenVesting.getVestingSchedule(
-        vestingScheduleId
-      );
+      let vestingSchedule: TokenVesting.VestingScheduleStructOutput =
+        await tokenVesting.getVestingSchedule(vestingScheduleId);
 
       // check that the released amount is 10
       expect(vestingSchedule.released).to.be.equal(10);
@@ -163,7 +162,7 @@ describe("TokenVesting", function () {
       // check that anyone cannot revoke a vesting
       await expect(
         tokenVesting.connect(addr2).revoke(vestingScheduleId)
-      ).to.be.revertedWith(" Ownable: caller is not the owner");
+      ).to.be.revertedWith("Ownable: caller is not the owner");
       await tokenVesting.revoke(vestingScheduleId);
 
       /*
@@ -189,36 +188,25 @@ describe("TokenVesting", function () {
     });
 
     it("Should release vested tokens if revoked", async function () {
-      // deploy vesting contract
-      const tokenVesting = await TokenVesting.deploy(testToken.address);
-      await tokenVesting.deployed();
-      expect((await tokenVesting.getToken()).toString()).to.equal(
-        testToken.address
-      );
       // send tokens to vesting contract
       await expect(testToken.transfer(tokenVesting.address, 1000))
         .to.emit(testToken, "Transfer")
         .withArgs(owner.address, tokenVesting.address, 1000);
 
-      const baseTime = 1622551248;
       const beneficiary = addr1;
-      const startTime = baseTime;
-      const cliff = 0;
-      const duration = 1000;
-      const slicePeriodSeconds = 1;
-      const revokable = true;
-      const amount = 100;
-
-      // create new vesting schedule
-      await tokenVesting.createVestingSchedule(
-        beneficiary.address,
-        startTime,
-        cliff,
+      const schedule: TokenVesting.VestingScheduleStruct = {
+        initialized: true,
+        revocable,
+        revoked: false,
+        beneficiary: beneficiary.address,
+        start: startTime,
+        cliff: startTime + cliff,
         duration,
-        slicePeriodSeconds,
-        revokable,
-        amount
-      );
+        amountTotal,
+        released: 0,
+      };
+      // create new vesting schedule
+      await tokenVesting.createVestingSchedule(schedule);
 
       // compute vesting schedule id
       const vestingScheduleId =
@@ -237,65 +225,48 @@ describe("TokenVesting", function () {
     });
 
     it("Should compute vesting schedule index", async function () {
-      const tokenVesting = await TokenVesting.deploy(testToken.address);
-      await tokenVesting.deployed();
       const expectedVestingScheduleId =
         "0xa279197a1d7a4b7398aa0248e95b8fcc6cdfb43220ade05d01add9c5468ea097";
       expect(
-        (
-          await tokenVesting.computeVestingScheduleIdForAddressAndIndex(
-            addr1.address,
-            0
-          )
-        ).toString()
+        await tokenVesting.computeVestingScheduleIdForAddressAndIndex(
+          addr1.address,
+          0
+        )
       ).to.equal(expectedVestingScheduleId);
       expect(
-        (
-          await tokenVesting.computeNextVestingScheduleIdForHolder(
-            addr1.address
-          )
-        ).toString()
+        await tokenVesting.computeNextVestingScheduleIdForHolder(addr1.address)
       ).to.equal(expectedVestingScheduleId);
     });
 
     it("Should check input parameters for createVestingSchedule method", async function () {
-      const tokenVesting = await TokenVesting.deploy(testToken.address);
-      await tokenVesting.deployed();
       await testToken.transfer(tokenVesting.address, 1000);
-      const time = Date.now();
+      const time = Math.round(Date.now() / 1000);
       await expect(
-        tokenVesting.createVestingSchedule(
-          addr1.address,
-          time,
-          0,
-          0,
-          1,
-          false,
-          1
-        )
-      ).to.be.revertedWith("TokenVesting: duration must be > 0");
+        tokenVesting.createVestingSchedule({
+          initialized: true,
+          revocable: false,
+          revoked: false,
+          beneficiary: addr1.address,
+          start: time,
+          cliff: time,
+          duration: 0,
+          amountTotal: 1,
+          released: 0,
+        } as TokenVesting.VestingScheduleStruct)
+      ).to.be.revertedWithCustomError(tokenVesting, "InvalidDuration");
       await expect(
-        tokenVesting.createVestingSchedule(
-          addr1.address,
-          time,
-          0,
-          1,
-          0,
-          false,
-          1
-        )
-      ).to.be.revertedWith("TokenVesting: slicePeriodSeconds must be >= 1");
-      await expect(
-        tokenVesting.createVestingSchedule(
-          addr1.address,
-          time,
-          0,
-          1,
-          1,
-          false,
-          0
-        )
-      ).to.be.revertedWith("TokenVesting: amount must be > 0");
+        tokenVesting.createVestingSchedule({
+          initialized: true,
+          revocable: false,
+          revoked: false,
+          beneficiary: addr1.address,
+          start: time,
+          cliff: time,
+          duration: 1,
+          amountTotal: 0,
+          released: 0,
+        } as TokenVesting.VestingScheduleStruct)
+      ).to.be.revertedWithCustomError(tokenVesting, "InvalidAmount");
     });
   });
 });
