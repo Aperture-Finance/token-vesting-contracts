@@ -22,10 +22,10 @@ contract TokenVesting is Ownable {
         bool revoked;
         // beneficiary of tokens after they are released
         address beneficiary;
-        // cliff in seconds, latest year 2106
-        uint32 cliff;
         // start time of the vesting period, latest year 2106
         uint32 start;
+        // cliff in seconds, latest year 2106
+        uint32 cliff;
         // second slot
         // duration of the vesting period in seconds, max 136 years
         uint32 duration;
@@ -291,13 +291,16 @@ contract TokenVesting is Ownable {
      */
     function batchCreateVestingSchedule(
         VestingSchedule[] calldata _vestingSchedules
-    ) external onlyOwner {
+    ) public onlyOwner {
         unchecked {
             uint256 _vestingSchedulesTotalAmount = vestingSchedulesTotalAmount;
             uint256 totalAmount = _vestingSchedulesTotalAmount;
             uint256 length = _vestingSchedules.length;
-            for (uint256 i = 0; i < length; i++) {
+            for (uint256 i = 0; i < length; ++i) {
                 VestingSchedule calldata vestingSchedule = _vestingSchedules[i];
+                require(vestingSchedule.initialized);
+                require(!vestingSchedule.revoked);
+                require(vestingSchedule.released == 0);
                 address beneficiary = vestingSchedule.beneficiary;
                 if (beneficiary == address(0)) revert InvalidBeneficiary();
                 uint112 amount = vestingSchedule.amountTotal;
@@ -323,59 +326,17 @@ contract TokenVesting is Ownable {
 
     /**
      * @notice Creates a new vesting schedule for a beneficiary.
-     * @param _beneficiary address of the beneficiary to whom vested tokens are transferred
-     * @param _start start time of the vesting period
-     * @param _cliff duration in seconds of the cliff in which tokens will begin to vest
-     * @param _duration duration in seconds of the period in which the tokens will vest
-     * @param _revocable whether the vesting is revocable or not
-     * @param _amount total amount of tokens to be released at the end of the vesting
+     * @param vestingSchedule vesting schedule structure information
      */
     function createVestingSchedule(
-        address _beneficiary,
-        uint32 _start,
-        uint32 _cliff,
-        uint32 _duration,
-        bool _revocable,
-        uint112 _amount
-    ) external onlyOwner {
-        // We do not validate withdrawable amount here because we want to enable the ability
-        // to call `createVestingSchedule()` from the token contract's constructor.
-        // `getWithdrawableAmount()` would call the token contract's `balanceOf()` which
-        // is not possible during token contract construction.
-        //
-        // require(
-        //     getWithdrawableAmount() >= _amount,
-        //     "cannot create vesting schedule because not sufficient tokens"
-        // );
-        if (_duration == 0) revert InvalidDuration();
-        if (_amount == 0) revert InvalidAmount();
-        bytes32 vestingScheduleId = computeNextVestingScheduleIdForHolder(
-            _beneficiary
-        );
-        unchecked {
-            uint32 cliff = _start + _cliff;
-            require(cliff >= _start);
-            require(_start + _duration > _start);
-            vestingSchedules[vestingScheduleId] = VestingSchedule({
-                initialized: true,
-                revocable: _revocable,
-                revoked: false,
-                beneficiary: _beneficiary,
-                cliff: cliff,
-                start: _start,
-                duration: _duration,
-                amountTotal: _amount,
-                released: 0
-            });
-            // Cannot realistically overflow
-            uint256 _vestingSchedulesTotalAmount = vestingSchedulesTotalAmount;
-            uint256 totalAmount = _vestingSchedulesTotalAmount + _amount;
-            require(totalAmount > _vestingSchedulesTotalAmount);
-            vestingSchedulesTotalAmount = totalAmount;
-            vestingSchedulesIds.push(vestingScheduleId);
-            holdersVestingCount[_beneficiary] += 1;
+        VestingSchedule calldata vestingSchedule
+    ) external {
+        VestingSchedule[] calldata _vestingSchedules;
+        assembly {
+            _vestingSchedules.length := 1
+            _vestingSchedules.offset := vestingSchedule
         }
-        emit Created(vestingScheduleId, _beneficiary, _amount);
+        batchCreateVestingSchedule(_vestingSchedules);
     }
 
     /**

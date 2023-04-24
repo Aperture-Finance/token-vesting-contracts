@@ -46,18 +46,21 @@ describe("TokenVesting", function () {
       const startTime = baseTime;
       const cliff = 0;
       const duration = 1000;
-      const revokable = true;
+      const revocable = true;
       const amount = 100;
 
       // create new vesting schedule
-      await tokenVesting.createVestingSchedule(
+      await tokenVesting.createVestingSchedule([
+        true,
+        revocable,
+        false,
         beneficiary.address,
         startTime,
-        cliff,
+        startTime + cliff,
         duration,
-        revokable,
-        amount
-      );
+        amount,
+        0,
+      ]);
       expect(await tokenVesting.getVestingSchedulesCount()).to.be.equal(1);
       expect(
         await tokenVesting.getVestingSchedulesCountByBeneficiary(
@@ -191,14 +194,17 @@ describe("TokenVesting", function () {
       const amount = 100;
 
       // create new vesting schedule
-      await tokenVesting.createVestingSchedule(
+      await tokenVesting.createVestingSchedule([
+        true,
+        revocable,
+        false,
         beneficiary.address,
         startTime,
-        cliff,
+        startTime + cliff,
         duration,
-        revocable,
-        amount
-      );
+        amount,
+        0,
+      ]);
 
       // compute vesting schedule id
       const vestingScheduleId =
@@ -240,10 +246,30 @@ describe("TokenVesting", function () {
       await testToken.transfer(tokenVesting.address, 1000);
       const time = Math.round(Date.now() / 1000);
       await expect(
-        tokenVesting.createVestingSchedule(addr1.address, time, 0, 0, false, 1)
+        tokenVesting.createVestingSchedule([
+          true,
+          false,
+          false,
+          addr1.address,
+          time,
+          time,
+          0,
+          1,
+          0,
+        ])
       ).to.be.revertedWith("InvalidDuration");
       await expect(
-        tokenVesting.createVestingSchedule(addr1.address, time, 0, 1, false, 0)
+        tokenVesting.createVestingSchedule([
+          true,
+          false,
+          false,
+          addr1.address,
+          time,
+          time,
+          1,
+          0,
+          0,
+        ])
       ).to.be.revertedWith("InvalidAmount");
     });
   });
