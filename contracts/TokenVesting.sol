@@ -309,9 +309,8 @@ contract TokenVesting is Ownable {
                 {
                     uint32 start = vestingSchedule.start;
                     uint32 duration = vestingSchedule.duration;
-                    if (duration == 0) revert InvalidDuration();
                     uint32 end = start + duration;
-                    require(end > start);
+                    if (duration == 0 || end < start) revert InvalidDuration();
                     uint32 cliff = vestingSchedule.cliff;
                     if (cliff < start || cliff > end) revert InvalidCliff();
                 }
