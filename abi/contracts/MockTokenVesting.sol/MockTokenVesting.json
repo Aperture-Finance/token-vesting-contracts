@@ -1,9 +1,9 @@
 [
   "constructor(address)",
-  "error CliffBeforeStart()",
   "error IndexOutOfBounds()",
   "error InvalidAmount()",
   "error InvalidBeneficiary()",
+  "error InvalidCliff()",
   "error InvalidDuration()",
   "error NotRevocable()",
   "error NotVesting()",

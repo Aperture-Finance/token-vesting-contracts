@@ -63,7 +63,7 @@ contract TokenVesting is Ownable {
     error InvalidAmount();
     error InvalidBeneficiary();
     error InvalidDuration();
-    error CliffBeforeStart();
+    error InvalidCliff();
     error OnlyBeneficiaryOrOwner();
 
     /**
@@ -306,11 +306,14 @@ contract TokenVesting is Ownable {
                 uint112 amount = vestingSchedule.amountTotal;
                 if (amount == 0) revert InvalidAmount();
                 totalAmount += amount;
-                uint32 start = vestingSchedule.start;
-                if (vestingSchedule.cliff < start) revert CliffBeforeStart();
-                uint32 duration = vestingSchedule.duration;
-                if (duration == 0) revert InvalidDuration();
-                require(start + duration > start);
+                {
+                    uint32 start = vestingSchedule.start;
+                    uint32 duration = vestingSchedule.duration;
+                    uint32 end = start + duration;
+                    if (duration == 0 || end < start) revert InvalidDuration();
+                    uint32 cliff = vestingSchedule.cliff;
+                    if (cliff < start || cliff > end) revert InvalidCliff();
+                }
                 bytes32 vestingScheduleId = computeNextVestingScheduleIdForHolder(
                         beneficiary
                     );
